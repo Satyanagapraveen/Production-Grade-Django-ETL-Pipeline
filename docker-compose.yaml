@@ -1,0 +1,28 @@
+services:
+  db:
+   image: postgres
+   environment:
+    POSTGRES_DB: legacy_db
+    POSTGRED_USER: etl_user
+    POSTGRES_password: etl_password
+   ports:
+     - "5432:5432"
+   healthcheck:
+    test: ["CMD-SHELL","pg_isready -U etl_user -d legacy_db"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+  
+  app:
+    build: .
+    command: python manager.py runserver 0.0.0.0:8000
+    volumes:
+    - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+     - DATABASE_URL=postgres://etl_user:etl_password@db:5432/legcay_db
+    depends_on:
+     db:
+      condition: service_healthy
+
