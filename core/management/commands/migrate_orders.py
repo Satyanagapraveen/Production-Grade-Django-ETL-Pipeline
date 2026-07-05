@@ -28,7 +28,6 @@ class Command(BaseCommand):
         orders_to_create = []
         lines_to_create = []
         processed_ids = []
-        
         records_processed = 0
 
         for legacy_order in queryset.iterator(chunk_size=batch_size):
@@ -54,10 +53,46 @@ class Command(BaseCommand):
             records_processed += 1
             
             if len(orders_to_create) >= batch_size:
-                self.stdout.write(f"Buffer full. Ready to process batch of {len(orders_to_create)}...")
-                # self.process_batch(...) will go here
+                self.process_batch(orders_to_create, lines_to_create, processed_ids, dry_run)
                 orders_to_create = []
                 lines_to_create = []
                 processed_ids = []
 
-        self.stdout.write(self.style.SUCCESS(f"Extraction tested. Total records iterated: {records_processed}"))
+        # Catch any remaining records that didn't fill the last batch
+        if orders_to_create:
+            self.process_batch(orders_to_create, lines_to_create, processed_ids, dry_run)
+
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        throughput = records_processed / total_time if total_time > 0 else 0
+        
+        self.stdout.write(self.style.SUCCESS(
+            f"Migration Complete!\n"
+            f"Total time: {total_time:.2f} seconds\n"
+            f"Throughput: {throughput:.2f} records per second"
+        ))
+
+    def process_batch(self, orders, lines, legacy_ids, dry_run):
+        if dry_run:
+            self.stdout.write(f"[Dry Run] Would process {len(orders)} records.")
+            return
+        
+        try:
+            with transaction.atomic():
+                Order.objects.bulk_create(orders)
+                
+                created_orders = Order.objects.filter(
+                    external_id__in=[o.external_id for o in orders]
+                ).in_bulk(field_name='external_id')
+
+                for line in lines:
+                    line.order = created_orders[line.order.external_id]
+                
+                OrderLine.objects.bulk_create(lines)
+
+                LegacyOrder.objects.filter(id__in=legacy_ids).update(migrated=True)
+                
+            self.stdout.write(f"Successfully processed batch of {len(orders)} records.")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"An error occurred in batch: {e}"))
+            raise e
