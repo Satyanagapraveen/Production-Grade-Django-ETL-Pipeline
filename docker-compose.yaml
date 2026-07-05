@@ -2,9 +2,9 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: legacy_db
-      POSTGRES_USER: etl_user
-      POSTGRES_PASSWORD: etl_password
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     healthcheck:
@@ -21,7 +21,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-     - DATABASE_URL=postgres://etl_user:etl_password@db:5432/legcay_db
+     - DATABASE_URL=${DATABASE_URL}
     depends_on:
      db:
       condition: service_healthy
